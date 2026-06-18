@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MRBD Teleprompter Dual-Mode Fix</title>
+  <title>MRBD Teleprompter - Fully Visible Editor</title>
   <style>
     /* Reset and Core Layout targeting both Phone and 600x600 Glasses HUD Frame */
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,8 +22,8 @@
     #hud-container {
       width: 100%;
       height: 100%;
-      max-width: 600px;
-      max-height: 600px;
+      max-width: 100%; /* Expanded to allow full web/phone dashboard utility */
+      max-height: 100%;
       position: relative;
       overflow: hidden;
     }
@@ -67,25 +67,15 @@
       font-style: italic;
     }
 
-    /* PHONE-ONLY SMART EDITOR PANEL */
+    /* SMART EDITOR PANEL - FIXED TO STAY VISIBLE */
     #phone-editor-panel {
       background: #111111;
       border-top: 2px solid #222;
       padding: 15px;
-      display: flex;
+      display: flex !important; /* Hiding restriction removed: always visible across platforms */
       flex-direction: column;
       gap: 10px;
       width: 100%;
-    }
-    
-    /* Device-specific presentation behavior */
-    body.glasses-mode #phone-editor-panel {
-      display: none !important; /* Forces layout to completely hide on the glasses HUD */
-    }
-    
-    body.phone-mode #hud-container {
-      max-width: 100%; /* Spans full screen scale inside the Meta AI App browser */
-      max-height: 100%;
     }
 
     textarea {
@@ -127,14 +117,16 @@
     .status-active { color: #00FF66; }
   </style>
 </head>
-<body class="glasses-mode">
+<body>
 
   <div id="hud-container">
     
+    <!-- MENU VIEW -->
     <div id="menu-view" class="view active-view">
       <h2>Select Script</h2>
       <ul id="script-list" class="menu-list"></ul>
       
+      <!-- Entry Input Panel Structure -->
       <div id="phone-editor-panel">
         <textarea id="paste-box" placeholder="Tap here to write or paste a script..."></textarea>
         <div class="btn-row">
@@ -145,6 +137,7 @@
       </div>
     </div>
 
+    <!-- TELEPROMPTER HUD VIEW -->
     <div id="prompter-view" class="view">
       <div class="reading-guide"></div>
       <div class="script-scroll-window">
@@ -165,20 +158,12 @@
     let wordsArray = [];
     let currentWordIndex = -1;
 
-    function detectEnvironment() {
-      if (window.innerWidth < 650 && window.innerHeight > 650 || !('ontouchstart' in window === false)) {
-        document.body.className = "phone-mode";
-      } else {
-        document.body.className = "glasses-mode";
-      }
-    }
-
     function loadScriptsFromStorage() {
       const stored = localStorage.getItem("mrbd_scripts");
       if (stored) {
         scripts = JSON.parse(stored);
       } else {
-        scripts = []; // Start completely clean if nothing is saved yet
+        scripts = []; 
       }
     }
 
@@ -195,7 +180,6 @@
         return;
       }
 
-      // Bound check index loop safety
       if (currentMenuIndex >= scripts.length) {
         currentMenuIndex = Math.max(0, scripts.length - 1);
       }
@@ -218,7 +202,7 @@
         const text = await navigator.clipboard.readText();
         document.getElementById("paste-box").value = text;
       } catch (err) {
-        alert("Clipboard access restricted. Press and hold inside the text area to manually paste your script.");
+        alert("Clipboard browser safety warning: please hold your finger down on the text box to paste manually.");
       }
     }
 
@@ -233,7 +217,6 @@
       localStorage.setItem("mrbd_scripts", JSON.stringify(scripts));
       document.getElementById("paste-box").value = "";
       
-      // Target the newly added item automatically
       currentMenuIndex = scripts.length - 1; 
       renderMenu();
     }
@@ -251,3 +234,154 @@
       activeView = viewName;
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
       if(viewName === "menu") {
+        stopVoiceTracking();
+        document.getElementById("menu-view").classList.add('active-view');
+        loadScriptsFromStorage();
+        renderMenu();
+      } else if(viewName === "prompter") {
+        document.getElementById("prompter-view").classList.add('active-view');
+        initPrompter();
+      }
+    }
+
+    window.addEventListener('keydown', function(e) {
+      if (scripts.length === 0 && activeView === "menu") return;
+
+      if (activeView === "menu") {
+        if (e.key === "ArrowDown") {
+          currentMenuIndex = (currentMenuIndex + 1) % scripts.length;
+          renderMenu();
+          const selected = document.querySelector('.selected');
+          if (selected) selected.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === "ArrowUp") {
+          currentMenuIndex = (currentMenuIndex - 1 + scripts.length) % scripts.length;
+          renderMenu();
+          const selected = document.querySelector('.selected');
+          if (selected) selected.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === "Enter") {
+          selectedScript = scripts[currentMenuIndex];
+          switchView("prompter");
+        }
+      } else if (activeView === "prompter") {
+        if (e.key === "Escape" || e.key === "ArrowLeft") {
+          switchView("menu");
+        }
+        if (e.key === "ArrowDown") adjustScrollManual(1);
+        if (e.key === "ArrowUp") adjustScrollManual(-1);
+      }
+    });
+
+    function initPrompter() {
+      const engineEl = document.getElementById("script-text-engine");
+      engineEl.innerHTML = "";
+      engineEl.style.transform = `translateY(0px)`;
+      
+      wordsArray = selectedScript.text.split(/\s+/);
+      currentWordIndex = -1;
+
+      wordsArray.forEach((word, idx) => {
+        const span = document.createElement("span");
+        span.className = "word-token";
+        span.id = `token-${idx}`;
+        span.innerText = word;
+        engineEl.appendChild(span);
+      });
+
+      startVoiceTracking();
+    }
+
+    function startVoiceTracking() {
+      window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!window.SpeechRecognition) {
+        document.getElementById("mic-status").innerText = "Speech API Missing";
+        return;
+      }
+
+      recognition = new window.SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        const statusEl = document.getElementById("mic-status");
+        statusEl.innerText = "● Tracking Active";
+        statusEl.classList.add("status-active");
+      };
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            matchSpokenText(event.results[i][0].transcript);
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+            matchSpokenText(interimTranscript);
+          }
+        }
+      };
+
+      recognition.onend = () => {
+        if(activeView === "prompter") recognition.start();
+      };
+
+      recognition.start();
+    }
+
+    function stopVoiceTracking() {
+      if(recognition) {
+        recognition.onend = null;
+        recognition.stop();
+        recognition = null;
+      }
+      document.getElementById("mic-status").classList.remove("status-active");
+      document.getElementById("mic-status").innerText = "● Standby";
+    }
+
+    function matchSpokenText(transcript) {
+      const spokenWords = transcript.toLowerCase().trim().split(/\s+/);
+      const lookaheadWindow = 10;
+      
+      let searchStartIndex = Math.max(0, currentWordIndex);
+      let searchEndIndex = Math.min(wordsArray.length, searchStartIndex + lookaheadWindow);
+
+      for (let i = spokenWords.length - 1; i >= 0; i--) {
+        const spokenWord = spokenWords[i].replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
+        
+        for (let j = searchStartIndex; j < searchEndIndex; j++) {
+          const targetWord = wordsArray[j].toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
+          
+          if (targetWord === spokenWord && j > currentWordIndex) {
+            currentWordIndex = j;
+            updateHUDHighlightAndScroll();
+            return;
+          }
+        }
+      }
+    }
+
+    function updateHUDHighlightAndScroll() {
+      for (let i = 0; i < wordsArray.length; i++) {
+        const el = document.getElementById(`token-${i}`);
+        if(!el) continue;
+        if (i < currentWordIndex) el.className = "word-token spoken";
+        else if (i === currentWordIndex) el.className = "word-token current";
+        else el.className = "word-token";
+      }
+
+      const currentEl = document.getElementById(`token-${currentWordIndex}`);
+      if (currentEl) {
+        const engineEl = document.getElementById("script-text-engine");
+        engineEl.style.transform = `translateY(-${currentEl.offsetTop}px)`;
+      }
+    }
+
+    function adjustScrollManual(direction) {
+      currentWordIndex = Math.max(-1, Math.min(wordsArray.length - 1, currentWordIndex + (direction * 2)));
+      updateHUDHighlightAndScroll();
+    }
+
+    loadScriptsFromStorage();
+    renderMenu();
+  </script>
+</body>
+</html>
