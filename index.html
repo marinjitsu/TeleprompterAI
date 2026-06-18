@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MRBD Teleprompter</title>
+  <title>MRBD Teleprompter Dual-Mode</title>
   <style>
-    /* Reset and Core Layout targeting the 600x600 Glasses HUD Frame */
+    /* Reset and Core Layout targeting both Phone and 600x600 Glasses HUD Frame */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background-color: #000000;
@@ -19,7 +19,6 @@
       align-items: center;
     }
 
-    /* Outer Wrapper representing the Glasses Viewport constraints */
     #hud-container {
       width: 100%;
       height: 100%;
@@ -27,10 +26,9 @@
       max-height: 600px;
       position: relative;
       overflow: hidden;
-      border: 1px solid #222; /* Helpful for browser simulator testing */
     }
 
-    /* VIEW 1: Script Selection Menu */
+    /* Views Framework */
     .view {
       display: none;
       width: 100%;
@@ -43,18 +41,17 @@
     }
     .active-view { display: flex; }
 
-    h2 { font-size: 28px; margin-bottom: 20px; color: #00D2FF; text-align: center; }
+    h2 { font-size: 28px; margin-bottom: 15px; color: #00D2FF; text-align: center; }
     
-    .menu-list { list-style: none; flex: 1; overflow-y: auto; }
+    .menu-list { list-style: none; flex: 1; overflow-y: auto; margin-bottom: 15px; }
     .menu-item {
       padding: 15px 20px;
-      margin: 10px 0;
-      font-size: 24px;
+      margin: 8px 0;
+      font-size: 22px;
       background: #111;
       border: 2px solid #333;
       border-radius: 8px;
       cursor: pointer;
-      transition: all 0.2s ease;
     }
     .menu-item.selected {
       background: #00D2FF;
@@ -63,106 +60,77 @@
       font-weight: bold;
     }
 
-    /* Phone Editor View (Hidden when using on Glasses) */
-    .phone-editor {
-      background: #1a1a1a;
+    /* PHONE-ONLY SMART EDITOR PANEL */
+    #phone-editor-panel {
+      background: #111111;
+      border-top: 2px solid #222;
       padding: 15px;
-      border-radius: 8px;
-      margin-top: auto;
-    }
-    textarea {
-      width: 100%; height: 100px; background: #000; color: #FFF; 
-      border: 1px solid #444; border-radius: 4px; padding: 10px; font-size: 16px;
-    }
-    .btn-row { display: flex; gap: 10px; margin-top: 10px; }
-    button {
-      flex: 1; padding: 10px; font-size: 16px; font-weight: bold;
-      background: #00D2FF; border: none; border-radius: 4px; cursor: pointer;
-    }
-
-    /* VIEW 2: Teleprompter Display Grid */
-    #prompter-view {
-      padding: 0;
-      justify-content: flex-start;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
     
-    /* Guide Overlay to isolate current line visually in peripheral view */
+    /* Device-specific presentation behavior */
+    body.glasses-mode #phone-editor-panel {
+      display: none !important; /* Forces layout to completely hide on the glasses HUD */
+    }
+    
+    body.phone-mode #hud-container {
+      max-width: 100%; /* Spans full screen scale inside the Meta AI App browser */
+      max-height: 100%;
+    }
+
+    textarea {
+      width: 100%; height: 120px; background: #000; color: #FFF; 
+      border: 1px solid #444; border-radius: 6px; padding: 12px; font-size: 16px;
+      resize: none;
+    }
+    .btn-row { display: flex; gap: 10px; }
+    button {
+      flex: 1; padding: 12px; font-size: 14px; font-weight: bold;
+      background: #00D2FF; border: none; border-radius: 6px; cursor: pointer; color: #000;
+    }
+
+    /* TELEPROMPTER VIEW DISPLAY GRID */
+    #prompter-view { padding: 0; justify-content: flex-start; }
+    
     .reading-guide {
       position: absolute;
-      top: 40%;
-      left: 5%;
-      width: 90%;
-      height: 80px;
-      border-top: 2px dashed rgba(0, 210, 255, 0.6);
-      border-bottom: 2px dashed rgba(0, 210, 255, 0.6);
-      pointer-events: none;
-      z-index: 10;
+      top: 40%; left: 5%; width: 90%; height: 85px;
+      border-top: 2px dashed rgba(0, 210, 255, 0.5);
+      border-bottom: 2px dashed rgba(0, 210, 255, 0.5);
+      pointer-events: none; z-index: 10;
     }
 
-    /* Massive Text Scrolling Container */
-    .script-scroll-window {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      position: relative;
-    }
-
+    .script-scroll-window { width: 100%; height: 100%; overflow: hidden; position: relative; }
     .script-content {
-      position: absolute;
-      width: 100%;
-      top: 40%; /* Starts tracking perfectly aligned with the reading guide */
-      left: 0;
-      padding: 0 30px;
-      transition: transform 0.3s cubic-bezier(0.1, 0.8, 0.2, 1);
+      position: absolute; width: 100%; top: 40%; left: 0; padding: 0 30px;
+      transition: transform 0.25s cubic-bezier(0.1, 0.8, 0.2, 1);
     }
 
-    /* Individual spoken chunks */
     .word-token {
-      font-size: 38px; /* Extra large font optimized for monocular overlay reading */
-      line-height: 1.6;
-      color: #666; /* Unspoken words are dim */
-      display: inline;
-      margin-right: 12px;
-      word-wrap: break-word;
-      transition: color 0.15s ease;
+      font-size: 36px; line-height: 1.6; color: #444; display: inline;
+      margin-right: 12px; word-wrap: break-word; transition: color 0.1s ease;
     }
+    .word-token.spoken { color: #888; }
+    .word-token.current { color: #00D2FF; text-shadow: 0 0 8px rgba(0, 210, 255, 0.8); }
     
-    .word-token.spoken {
-      color: #FFFFFF; /* Spoken words turn bright white */
-    }
-    .word-token.current {
-      color: #00D2FF; /* Currently active word is neon blue */
-      text-shadow: 0 0 10px rgba(0, 210, 255, 0.8);
-    }
-    
-    /* Status indicators at the bottom corner */
-    .status-bar {
-      position: absolute;
-      bottom: 10px; right: 15px;
-      font-size: 14px; color: #444;
-      z-index: 20;
-    }
-    .status-active { color: #00FF66; animation: pulse 2s infinite; }
-
-    @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+    .status-bar { position: absolute; bottom: 10px; right: 15px; font-size: 14px; color: #444; z-index: 20; }
+    .status-active { color: #00FF66; }
   </style>
 </head>
-<body>
-
-  <div id="hud-container">
+<body class="glasses-mode"> <div id="hud-container">
     
     <div id="menu-view" class="view active-view">
       <h2>Select Script</h2>
-      <ul id="script-list" class="menu-list">
-        </ul>
+      <ul id="script-list" class="menu-list"></ul>
       
-      <div class="phone-editor">
-        <p style="font-size:12px; margin-bottom:5px; color:#aaa;">Phone Control / Copy & Paste Hub:</p>
-        <textarea id="paste-box" placeholder="Paste your script here..."></textarea>
+      <div id="phone-editor-panel">
+        <textarea id="paste-box" placeholder="Tap here to write or paste a script..."></textarea>
         <div class="btn-row">
-          <button onclick="pasteFromClipboard()">Paste Clipboard</button>
-          <button onclick="saveNewScript()" style="background:#00FF66; color:#000;">Save Script</button>
-          <button onclick="clearAllScripts()" style="background:#FF3B30; color:#fff;">Clear All</button>
+          <button onclick="pasteFromClipboard()" style="background:#555; color:#fff;">Paste</button>
+          <button onclick="saveNewScript()" style="background:#00FF66;">Save Script</button>
+          <button onclick="clearAllScripts()" style="background:#FF3B30; color:#fff; flex:0.5;">Clear</button>
         </div>
       </div>
     </div>
@@ -172,33 +140,49 @@
       <div class="script-scroll-window">
         <div id="script-text-engine" class="script-content"></div>
       </div>
-      <div class="status-bar" id="mic-status">● Listening</div>
+      <div class="status-bar" id="mic-status">● Standby</div>
     </div>
 
   </div>
 
   <script>
-    // --- Application State ---
-    let scripts = [
+    // --- Initial State Data ---
+    let defaultScripts = [
       { id: 1, title: "Elevator Pitch", text: "Welcome to the future of smart eyewear. This teleprompter automatically follows my voice as I speak, giving me hands free access to data." },
       { id: 2, title: "Product Demo", text: "By using the built in Web Speech API, we match speech patterns locally on device. Navigation relies cleanly on basic directional inputs." }
     ];
     
+    let scripts = [];
     let currentMenuIndex = 0;
-    let activeView = "menu"; // "menu" or "prompter"
+    let activeView = "menu";
     let selectedScript = null;
     
-    // Voice Tracking State
+    // Voice Engine Properties
     let recognition = null;
     let wordsArray = [];
     let currentWordIndex = -1;
 
-    // Load custom scripts from LocalStorage if present
-    if(localStorage.getItem("mrbd_scripts")) {
-      scripts = JSON.parse(localStorage.getItem("mrbd_scripts"));
+    // --- Environment Detection Switch ---
+    function detectEnvironment() {
+      // If screen resolution width is wider than a tight HUD frame viewport or standard mobile sizing is met, reveal editor
+      if (window.innerWidth < 650 && window.innerHeight > 650 || !('ontouchstart' in window === false)) {
+        document.body.className = "phone-mode";
+      } else {
+        document.body.className = "glasses-mode";
+      }
     }
 
-    // --- UI Renderers ---
+    // --- Script Sync Core Operations ---
+    function loadScriptsFromStorage() {
+      const stored = localStorage.getItem("mrbd_scripts");
+      if (stored) {
+        scripts = JSON.parse(stored);
+      } else {
+        scripts = [...defaultScripts];
+        localStorage.setItem("mrbd_scripts", JSON.stringify(scripts));
+      }
+    }
+
     function renderMenu() {
       const listEl = document.getElementById("script-list");
       listEl.innerHTML = "";
@@ -206,42 +190,34 @@
         const li = document.createElement("li");
         li.className = `menu-item ${idx === currentMenuIndex ? 'selected' : ''}`;
         li.innerText = script.title;
-        li.onclick = () => { currentMenuIndex = idx; renderMenu(); };
+        li.onclick = () => { 
+          currentMenuIndex = idx; 
+          renderMenu(); 
+          // If editing on phone, let selecting tap also fill box for potential rewrite
+          document.getElementById("paste-box").value = scripts[idx].text;
+        };
         listEl.appendChild(li);
       });
-      // Keep selected item in view if it scrolls off screen
-      const selectedEl = listEl.querySelector('.selected');
-      if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest' });
     }
 
-    function switchView(viewName) {
-      activeView = viewName;
-      document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
-      if(viewName === "menu") {
-        stopVoiceTracking();
-        document.getElementById("menu-view").classList.add('active-view');
-        renderMenu();
-      } else if(viewName === "prompter") {
-        document.getElementById("prompter-view").classList.add('active-view');
-        initPrompter();
-      }
-    }
-
-    // --- Phone Copy/Paste Sync Functions ---
     async function pasteFromClipboard() {
       try {
         const text = await navigator.clipboard.readText();
         document.getElementById("paste-box").value = text;
       } catch (err) {
-        alert("To paste, tap the box manually or allow clipboard permissions.");
+        // Fallback context rule if permission alert catches browser sandbox inside native app wrappers
+        alert("Clipboard blocked by browser safety rules. Please press long-hold down into the text field to manually paste.");
       }
     }
 
     function saveNewScript() {
       const text = document.getElementById("paste-box").value.trim();
       if(!text) return;
-      const title = text.split(" ").slice(0, 3).join(" ") + "...";
+      
+      // Auto generate title snippet from first 3 words
+      const title = text.split(/\s+/).slice(0, 3).join(" ") + "...";
       const newScript = { id: Date.now(), title: title, text: text };
+      
       scripts.push(newScript);
       localStorage.setItem("mrbd_scripts", JSON.stringify(scripts));
       document.getElementById("paste-box").value = "";
@@ -249,167 +225,45 @@
     }
 
     function clearAllScripts() {
-      if(confirm("Clear all custom scripts?")) {
-        localStorage.removeItem("mrbd_scripts");
-        scripts = [];
+      localStorage.removeItem("mrbd_scripts");
+      scripts = [...defaultScripts];
+      localStorage.setItem("mrbd_scripts", JSON.stringify(scripts));
+      renderMenu();
+    }
+
+    // --- View Handling Router ---
+    function switchView(viewName) {
+      activeView = viewName;
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+      if(viewName === "menu") {
+        stopVoiceTracking();
+        document.getElementById("menu-view").classList.add('active-view');
+        loadScriptsFromStorage(); // Re-sync instantly on menu return in case phone saved data concurrently
         renderMenu();
+      } else if(viewName === "prompter") {
+        document.getElementById("prompter-view").classList.add('active-view');
+        initPrompter();
       }
     }
 
-    // --- Meta Wearables Inputs Routing ---
+    // --- Hardware Button Input Event Routing ---
     window.addEventListener('keydown', function(e) {
       if (activeView === "menu") {
         if (e.key === "ArrowDown") {
           currentMenuIndex = (currentMenuIndex + 1) % scripts.length;
           renderMenu();
+          const selected = document.querySelector('.selected');
+          if (selected) selected.scrollIntoView({ block: 'nearest' });
         } else if (e.key === "ArrowUp") {
           currentMenuIndex = (currentMenuIndex - 1 + scripts.length) % scripts.length;
           renderMenu();
+          const selected = document.querySelector('.selected');
+          if (selected) selected.scrollIntoView({ block: 'nearest' });
         } else if (e.key === "Enter") {
-          selectedScript = scripts[currentMenuIndex];
-          switchView("prompter");
+          if (scripts.length > 0) {
+            selectedScript = scripts[currentMenuIndex];
+            switchView("prompter");
+          }
         }
       } else if (activeView === "prompter") {
-        if (e.key === "Escape" || e.key === "ArrowLeft") {
-          switchView("menu");
-        }
-        // Micro-adjustments over automatic voice scroll via manual controls
-        if (e.key === "ArrowDown") {
-          adjustScrollManual(1);
-        } else if (e.key === "ArrowUp") {
-          adjustScrollManual(-1);
-        }
-      }
-    });
-
-    // --- Voice Tracking Engine ---
-    function initPrompter() {
-      const engineEl = document.getElementById("script-text-engine");
-      engineEl.innerHTML = "";
-      engineEl.style.transform = `translateY(0px)`;
-      
-      // Tokenize script into tracking words
-      wordsArray = selectedScript.text.split(/\s+/);
-      currentWordIndex = -1;
-
-      wordsArray.forEach((word, idx) => {
-        const span = document.createElement("span");
-        span.className = "word-token";
-        span.id = `token-${idx}`;
-        span.innerText = word;
-        engineEl.appendChild(span);
-      });
-
-      startVoiceTracking();
-    }
-
-    function startVoiceTracking() {
-      window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!window.SpeechRecognition) {
-        document.getElementById("mic-status").innerText = "Speech API Not Supported";
-        return;
-      }
-
-      recognition = new window.SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onstart = () => {
-        const statusEl = document.getElementById("mic-status");
-        statusEl.innerText = "● Tracking Active";
-        statusEl.classList.add("status-active");
-      };
-
-      recognition.onresult = (event) => {
-        let interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            matchSpokenText(event.results[i][0].transcript);
-          } else {
-            interimTranscript += event.results[i][0].transcript;
-            matchSpokenText(interimTranscript);
-          }
-        }
-      };
-
-      recognition.onerror = (e) => { console.error("Speech error", e); };
-      
-      // Ensure permanent looping restart if speech cuts out mid-session
-      recognition.onend = () => {
-        if(activeView === "prompter") recognition.start();
-      };
-
-      recognition.start();
-    }
-
-    function stopVoiceTracking() {
-      if(recognition) {
-        recognition.onend = null;
-        recognition.stop();
-        recognition = null;
-      }
-      const statusEl = document.getElementById("mic-status");
-      statusEl.classList.remove("status-active");
-      statusEl.innerText = "● Stopped";
-    }
-
-    // Speech Matching Alignment Mechanics
-    function matchSpokenText(transcript) {
-      const spokenWords = transcript.toLowerCase().trim().split(/\s+/);
-      const lookaheadWindow = 12; // Scans ahead to match words out of strict order safely
-      
-      let searchStartIndex = Math.max(0, currentWordIndex);
-      let searchEndIndex = Math.min(wordsArray.length, searchStartIndex + lookaheadWindow);
-
-      // Loop over the transcript segments starting backwards to find furthest matches
-      for (let i = spokenWords.length - 1; i >= 0; i--) {
-        const spokenWord = spokenWords[i].replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
-        
-        for (let j = searchStartIndex; j < searchEndIndex; j++) {
-          const targetWord = wordsArray[j].toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
-          
-          if (targetWord === spokenWord && j > currentWordIndex) {
-            currentWordIndex = j;
-            updateHUDHighlightAndScroll();
-            return;
-          }
-        }
-      }
-    }
-
-    function updateHUDHighlightAndScroll() {
-      // Toggle CSS highlighting states
-      for (let i = 0; i < wordsArray.length; i++) {
-        const el = document.getElementById(`token-${i}`);
-        if(!el) continue;
-        
-        if (i < currentWordIndex) {
-          el.className = "word-token spoken";
-        } else if (i === currentWordIndex) {
-          el.className = "word-token current";
-        } else {
-          el.className = "word-token";
-        }
-      }
-
-      // Automatically translate the text node vertically to center the 'current' tracking word
-      const currentEl = document.getElementById(`token-${currentWordIndex}`);
-      if (currentEl) {
-        const engineEl = document.getElementById("script-text-engine");
-        // Center calculation based on line offset position relative to parent window boundaries
-        const offsetTop = currentEl.offsetTop;
-        engineEl.style.transform = `translateY(-${offsetTop}px)`;
-      }
-    }
-
-    function adjustScrollManual(direction) {
-      currentWordIndex = Math.max(-1, Math.min(wordsArray.length - 1, currentWordIndex + (direction * 3)));
-      updateHUDHighlightAndScroll();
-    }
-
-    // Boot execution
-    renderMenu();
-  </script>
-</body>
-</html>
+        if (e.key === "Escape
