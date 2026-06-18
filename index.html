@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MRBD Teleprompter Dual-Mode</title>
+  <title>MRBD Teleprompter Dual-Mode Fix</title>
   <style>
     /* Reset and Core Layout targeting both Phone and 600x600 Glasses HUD Frame */
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -59,6 +59,13 @@
       border-color: #FFF;
       font-weight: bold;
     }
+    .no-scripts-msg {
+      text-align: center;
+      color: #666;
+      font-size: 20px;
+      padding: 30px;
+      font-style: italic;
+    }
 
     /* PHONE-ONLY SMART EDITOR PANEL */
     #phone-editor-panel {
@@ -68,6 +75,7 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+      width: 100%;
     }
     
     /* Device-specific presentation behavior */
@@ -119,7 +127,9 @@
     .status-active { color: #00FF66; }
   </style>
 </head>
-<body class="glasses-mode"> <div id="hud-container">
+<body class="glasses-mode">
+
+  <div id="hud-container">
     
     <div id="menu-view" class="view active-view">
       <h2>Select Script</h2>
@@ -146,25 +156,16 @@
   </div>
 
   <script>
-    // --- Initial State Data ---
-    let defaultScripts = [
-      { id: 1, title: "Elevator Pitch", text: "Welcome to the future of smart eyewear. This teleprompter automatically follows my voice as I speak, giving me hands free access to data." },
-      { id: 2, title: "Product Demo", text: "By using the built in Web Speech API, we match speech patterns locally on device. Navigation relies cleanly on basic directional inputs." }
-    ];
-    
     let scripts = [];
     let currentMenuIndex = 0;
     let activeView = "menu";
     let selectedScript = null;
     
-    // Voice Engine Properties
     let recognition = null;
     let wordsArray = [];
     let currentWordIndex = -1;
 
-    // --- Environment Detection Switch ---
     function detectEnvironment() {
-      // If screen resolution width is wider than a tight HUD frame viewport or standard mobile sizing is met, reveal editor
       if (window.innerWidth < 650 && window.innerHeight > 650 || !('ontouchstart' in window === false)) {
         document.body.className = "phone-mode";
       } else {
@@ -172,20 +173,33 @@
       }
     }
 
-    // --- Script Sync Core Operations ---
     function loadScriptsFromStorage() {
       const stored = localStorage.getItem("mrbd_scripts");
       if (stored) {
         scripts = JSON.parse(stored);
       } else {
-        scripts = [...defaultScripts];
-        localStorage.setItem("mrbd_scripts", JSON.stringify(scripts));
+        scripts = []; // Start completely clean if nothing is saved yet
       }
     }
 
     function renderMenu() {
       const listEl = document.getElementById("script-list");
       listEl.innerHTML = "";
+      
+      if (scripts.length === 0) {
+        const emptyMsg = document.createElement("div");
+        emptyMsg.className = "no-scripts-msg";
+        emptyMsg.innerText = "[ No Scripts Saved. Paste one below! ]";
+        listEl.appendChild(emptyMsg);
+        currentMenuIndex = 0;
+        return;
+      }
+
+      // Bound check index loop safety
+      if (currentMenuIndex >= scripts.length) {
+        currentMenuIndex = Math.max(0, scripts.length - 1);
+      }
+
       scripts.forEach((script, idx) => {
         const li = document.createElement("li");
         li.className = `menu-item ${idx === currentMenuIndex ? 'selected' : ''}`;
@@ -193,7 +207,6 @@
         li.onclick = () => { 
           currentMenuIndex = idx; 
           renderMenu(); 
-          // If editing on phone, let selecting tap also fill box for potential rewrite
           document.getElementById("paste-box").value = scripts[idx].text;
         };
         listEl.appendChild(li);
@@ -205,8 +218,7 @@
         const text = await navigator.clipboard.readText();
         document.getElementById("paste-box").value = text;
       } catch (err) {
-        // Fallback context rule if permission alert catches browser sandbox inside native app wrappers
-        alert("Clipboard blocked by browser safety rules. Please press long-hold down into the text field to manually paste.");
+        alert("Clipboard access restricted. Press and hold inside the text area to manually paste your script.");
       }
     }
 
@@ -214,56 +226,28 @@
       const text = document.getElementById("paste-box").value.trim();
       if(!text) return;
       
-      // Auto generate title snippet from first 3 words
       const title = text.split(/\s+/).slice(0, 3).join(" ") + "...";
       const newScript = { id: Date.now(), title: title, text: text };
       
       scripts.push(newScript);
       localStorage.setItem("mrbd_scripts", JSON.stringify(scripts));
       document.getElementById("paste-box").value = "";
+      
+      // Target the newly added item automatically
+      currentMenuIndex = scripts.length - 1; 
       renderMenu();
     }
 
     function clearAllScripts() {
-      localStorage.removeItem("mrbd_scripts");
-      scripts = [...defaultScripts];
-      localStorage.setItem("mrbd_scripts", JSON.stringify(scripts));
-      renderMenu();
+      if(confirm("Are you sure you want to delete all saved scripts?")) {
+        scripts = [];
+        localStorage.removeItem("mrbd_scripts");
+        document.getElementById("paste-box").value = "";
+        renderMenu();
+      }
     }
 
-    // --- View Handling Router ---
     function switchView(viewName) {
       activeView = viewName;
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
       if(viewName === "menu") {
-        stopVoiceTracking();
-        document.getElementById("menu-view").classList.add('active-view');
-        loadScriptsFromStorage(); // Re-sync instantly on menu return in case phone saved data concurrently
-        renderMenu();
-      } else if(viewName === "prompter") {
-        document.getElementById("prompter-view").classList.add('active-view');
-        initPrompter();
-      }
-    }
-
-    // --- Hardware Button Input Event Routing ---
-    window.addEventListener('keydown', function(e) {
-      if (activeView === "menu") {
-        if (e.key === "ArrowDown") {
-          currentMenuIndex = (currentMenuIndex + 1) % scripts.length;
-          renderMenu();
-          const selected = document.querySelector('.selected');
-          if (selected) selected.scrollIntoView({ block: 'nearest' });
-        } else if (e.key === "ArrowUp") {
-          currentMenuIndex = (currentMenuIndex - 1 + scripts.length) % scripts.length;
-          renderMenu();
-          const selected = document.querySelector('.selected');
-          if (selected) selected.scrollIntoView({ block: 'nearest' });
-        } else if (e.key === "Enter") {
-          if (scripts.length > 0) {
-            selectedScript = scripts[currentMenuIndex];
-            switchView("prompter");
-          }
-        }
-      } else if (activeView === "prompter") {
-        if (e.key === "Escape
